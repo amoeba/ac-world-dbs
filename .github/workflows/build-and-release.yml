@@ -1,4 +1,4 @@
-name: Build meta database and deploy
+name: Rebuild meta database
 
 on:
   push:
@@ -23,7 +23,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v6
 
-      - name: Download existing database assets
+      - name: Download database assets from latest release
         run: |
           mkdir -p databases
           gh release download latest \
@@ -34,33 +34,6 @@ jobs:
       - name: Build meta database
         run: uv run scripts/build_meta_db.py
 
-      - name: Update latest tag
+      - name: Upload meta.db to latest release
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -d latest || true
-          git push origin :refs/tags/latest || true
-          git tag -a latest -m "latest"
-          git push --tags
-
-      - name: Publish latest release with meta.db
-        run: |
-          if ! gh release view latest --repo "$RELEASE_REPO" >/dev/null 2>&1; then
-            gh release create latest --repo "$RELEASE_REPO" --title "latest" --notes "Latest world databases"
-          fi
           gh release upload latest ./databases/meta.db --repo "$RELEASE_REPO" --clobber
-          gh release edit latest --repo "$RELEASE_REPO" --draft=false
-
-  deploy_to_dokku:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Push to Dokku
-        uses: dokku/github-action@v1.10.0
-        with:
-          git_remote_url: 'ssh://dokku@${{ secrets.DOKKU_HOST }}/${{ secrets.DOKKU_APP_NAME }}'
-          ssh_private_key: ${{ secrets.DOKKU_SSH_PRIVATE_KEY }}
-          branch: main

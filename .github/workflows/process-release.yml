@@ -1,35 +1,32 @@
-name: Process raw SQL release
+name: Process versioned SQL release
 
 on:
   release:
     types: [published]
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "Tag of the raw release to process (e.g., raw-ace_world_customdm)"
-        required: true
 
 jobs:
   process:
     runs-on: ubuntu-latest
-    if: startsWith(github.event.release.tag_name, 'raw-') || github.event_name == 'workflow_dispatch'
+    if: startsWith(github.event.release.tag_name, 'v')
     permissions:
       contents: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       RELEASE_REPO: ${{ github.repository }}
+      CURRENT_TAG: ${{ github.event.release.tag_name }}
     steps:
       - uses: actions/checkout@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine release tag
-        id: vars
+      - name: Determine previous release
+        id: prev
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          CURRENT_NUM=$(echo "$CURRENT_TAG" | sed 's/^v//')
+          if [ "$CURRENT_NUM" -le 1 ]; then
+            echo "prev_tag=" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+            echo "prev_tag=v$((CURRENT_NUM - 1))" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install tools
@@ -51,12 +48,22 @@ jobs:
             sleep 2
           done
 
-      - name: Download raw release assets
+      - name: Download current release assets
         run: |
           mkdir -p raw
-          gh release download "${{ steps.vars.outputs.tag }}" \
+          gh release download "$CURRENT_TAG" \
             --repo "$RELEASE_REPO" \
             --dir raw
+
+      - name: Download previous release assets
+        if: steps.prev.outputs.prev_tag != ''
+        run: |
+          mkdir -p databases
+          gh release download "${{ steps.prev.outputs.prev_tag }}" \
+            --repo "$RELEASE_REPO" \
+            --pattern "*.db" \
+            --pattern "*.sql.gz" \
+            --dir databases || true
 
       - name: Process raw SQL assets
         env:
@@ -86,7 +93,7 @@ jobs:
               db_file="databases/${db_name}.db"
               sh scripts/convert_mysql_to_sqlite.sh "$sql_file" "$db_file" "$db_name"
 
-              # Compress the raw SQL for the common release.
+              # Compress the raw SQL for the release.
               gzip -f "$sql_file"
             else
               echo "Skipping unrecognized asset: $filename"
@@ -136,14 +143,27 @@ jobs:
           if git diff --cached --quiet; then
             echo "No databases.toml changes to commit"
           else
-            git commit -m "Add database entries for ${{ steps.vars.outputs.tag }}"
+            git commit -m "Add database entries for $CURRENT_TAG"
             git push
           fi
 
-      - name: Upload converted assets to latest release
+      - name: Build meta database
+        run: python3 scripts/build_meta_db.py
+
+      - name: Upload all assets to current release
         run: |
-          if ! gh release view latest --repo "$RELEASE_REPO" >/dev/null 2>&1; then
-            gh release create latest --repo "$RELEASE_REPO" --title "latest" --notes "Latest world databases"
-          fi
-          gh release upload latest databases/*.db databases/*.sql.gz --repo "$RELEASE_REPO" --clobber
-          gh release edit latest --repo "$RELEASE_REPO" --draft=false
+          gh release upload "$CURRENT_TAG" databases/*.db databases/*.sql.gz databases/meta.db --repo "$RELEASE_REPO" --clobber
+
+      - name: Update latest tag
+        run: |
+          git tag -d latest || true
+          git push origin :refs/tags/latest || true
+          git tag -a latest -m "latest" "$CURRENT_TAG"^{}
+          git push origin latest
+
+      - name: Deploy to Dokku
+        uses: dokku/github-action@v1.10.0
+        with:
+          git_remote_url: 'ssh://dokku@${{ secrets.DOKKU_HOST }}/${{ secrets.DOKKU_APP_NAME }}'
+          ssh_private_key: ${{ secrets.DOKKU_SSH_PRIVATE_KEY }}
+          branch: main
