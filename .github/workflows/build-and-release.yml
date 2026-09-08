@@ -124,7 +124,7 @@ jobs:
             --repo "$RELEASE_REPO" \
             --title "$NEXT_TAG" \
             --notes "Common release with all converted databases."
-          gh release upload "$NEXT_TAG" databases/*.db databases/*.sql.gz databases/meta.db --repo "$RELEASE_REPO" --clobber
+          gh release upload "$NEXT_TAG" databases/ace_world_*.db databases/*.sql.gz databases/meta.db --repo "$RELEASE_REPO" --clobber
 
       - name: Update latest tag
         run: |
