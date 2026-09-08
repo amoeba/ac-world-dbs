@@ -132,8 +132,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -d latest || true
           git push origin :refs/tags/latest || true
-          git tag -a latest -m "latest" "${{ steps.version.outputs.tag }}"^{}
-          git push origin latest
+          git tag -a latest -m "latest"
+          git push origin latest --force
 
   deploy_to_dokku:
     runs-on: ubuntu-latest
