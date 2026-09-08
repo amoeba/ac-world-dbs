@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DB_DIR = ROOT / "databases"
 META_PATH = DB_DIR / "meta.db"
-CONFIG_PATH = ROOT / "databases.toml"
+CONFIG_PATH = ROOT / "meta.toml"
 RELEASE_REPO = "amoeba/ac-world-dbs"
 RELEASE_TAG = "latest"
 

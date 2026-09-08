@@ -8,7 +8,7 @@ A Datasette instance hosting world databases for Asheron's Call, plus a meta dat
   - `meta.db` — Metadata about each world database.
   - `test_world_fauna.db` — Sample fauna and spawn data.
   - `test_world_landmarks.db` — Sample landmarks and regions.
-- `databases.toml` — Configuration describing each world database.
+- `meta.toml` — Configuration describing each world database.
 - `scripts/` — Scripts to create test data, build the meta database, and download release assets.
 - `bin/post_compile` — Dokku hook to fetch databases from the latest GitHub release before startup.
 

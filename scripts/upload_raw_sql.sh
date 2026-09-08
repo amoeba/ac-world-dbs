@@ -3,7 +3,7 @@
 # upload_raw_sql.sh
 #
 # Create a GitHub release named raw-<db-name>, attach a raw MySQL dump file,
-# and publish it. After running this, add an entry to databases.toml and push;
+# and publish it. After running this, add an entry to meta.toml and push;
 # CI will then convert the dump to SQLite and include it in the next versioned
 # common release.
 #
@@ -72,7 +72,7 @@ gh release edit "$RELEASE_TAG" --repo "$REPO" --draft=false
 echo ""
 echo "Release published: https://github.com/$REPO/releases/tag/$RELEASE_TAG"
 echo ""
-echo "Add an entry like this to databases.toml, then commit and push:"
+echo "Add an entry like this to meta.toml, then commit and push:"
 echo ""
 echo "[$DB_NAME]"
 echo 'display_name = ""'
