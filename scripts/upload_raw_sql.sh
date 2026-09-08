@@ -2,10 +2,10 @@
 #
 # upload_raw_sql.sh
 #
-# Create a GitHub release named raw-<db-name>, attach a raw MySQL dump file,
-# and publish it. After running this, add an entry to meta.toml and push;
-# CI will then convert the dump to SQLite and include it in the next versioned
-# common release.
+# Create a GitHub release named raw-<db-name>, attach a zstd-compressed MySQL
+# dump file, and publish it. After running this, add an entry to meta.toml and
+# push; CI will then convert the dump to SQLite and include it in the next
+# versioned common release.
 #
 # Usage:
 #   ./upload_raw_sql.sh <path-to-sql-file> <database-name>
@@ -30,24 +30,37 @@ if [ ! -f "$FILE" ]; then
   exit 1
 fi
 
-EXT="${FILE##*.}"
+if ! command -v zstd >/dev/null 2>&1; then
+  echo "zstd is required but not installed. Install it and retry."
+  exit 1
+fi
 
-# Normalize the uploaded asset name so CI can find it.
-case "$EXT" in
-  7z)
-    ASSET_NAME="$DB_NAME.sql.7z"
+TMPDIR=$(mktemp -d)
+SQL_FILE="$TMPDIR/$DB_NAME.sql"
+ZST_FILE="$TMPDIR/$DB_NAME.sql.zst"
+
+# Decompress the input to a plain .sql file if needed.
+case "$FILE" in
+  *.sql.7z)
+    7z e -so "$FILE" > "$SQL_FILE"
     ;;
-  gz)
-    ASSET_NAME="$DB_NAME.sql.gz"
+  *.sql.gz)
+    gunzip -c "$FILE" > "$SQL_FILE"
     ;;
-  sql)
-    ASSET_NAME="$DB_NAME.sql"
+  *.sql.zst)
+    zstd -dc "$FILE" > "$SQL_FILE"
+    ;;
+  *.sql)
+    cp "$FILE" "$SQL_FILE"
     ;;
   *)
-    echo "Unsupported extension: $EXT (expected .sql, .sql.gz, or .sql.7z)"
+    echo "Unsupported extension: $FILE (expected .sql, .sql.zst, .sql.gz, or .sql.7z)"
     exit 1
     ;;
 esac
+
+echo "Compressing with zstd..."
+zstd -19 -T0 -o "$ZST_FILE" "$SQL_FILE"
 
 RELEASE_TAG="raw-$DB_NAME"
 
@@ -56,18 +69,17 @@ gh release create "$RELEASE_TAG" \
   --repo "$REPO" \
   --draft \
   --title "Raw: $DB_NAME" \
-  --notes "Raw MySQL dump for $DB_NAME."
+  --notes "Raw MySQL dump for $DB_NAME (zstd-compressed)."
 
-echo "Uploading $FILE as $ASSET_NAME..."
-TMPDIR=$(mktemp -d)
-cp "$FILE" "$TMPDIR/$ASSET_NAME"
-gh release upload "$RELEASE_TAG" "$TMPDIR/$ASSET_NAME" \
+echo "Uploading $ZST_FILE..."
+gh release upload "$RELEASE_TAG" "$ZST_FILE" \
   --repo "$REPO" \
   --clobber
-rm -rf "$TMPDIR"
 
 echo "Publishing release $RELEASE_TAG..."
 gh release edit "$RELEASE_TAG" --repo "$REPO" --draft=false
+
+rm -rf "$TMPDIR"
 
 echo ""
 echo "Release published: https://github.com/$REPO/releases/tag/$RELEASE_TAG"

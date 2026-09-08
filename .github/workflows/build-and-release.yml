@@ -26,7 +26,7 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y p7zip-full gzip
+          sudo apt-get install -y p7zip-full zstd
           python3 -m pip install datasette
           python3 -m pip install "db-to-sqlite @ git+https://github.com/amoeba/db-to-sqlite#egg=db-to-sqlite[mysql]"
 
@@ -68,24 +68,18 @@ jobs:
 
               print(f"Downloading raw SQL for {name} from {raw_tag}...")
               subprocess.run(
-                  ["gh", "release", "download", raw_tag, "--repo", repo, "--pattern", f"{name}.sql*", "--dir", "raw"],
+                  ["gh", "release", "download", raw_tag, "--repo", repo, "--pattern", f"{name}.sql.zst", "--dir", "raw"],
                   check=True,
               )
 
               raw_dir = Path("raw")
-              matches = list(raw_dir.glob(f"{name}.sql*"))
-              if not matches:
+              asset = raw_dir / f"{name}.sql.zst"
+              if not asset.exists():
                   raise RuntimeError(f"No raw SQL asset found for {name}")
 
-              asset = matches[0]
               sql_file = Path("databases") / f"{name}.sql"
-
-              if asset.name.endswith(".sql.gz"):
-                  subprocess.run(["gunzip", "-c", str(asset)], stdout=open(sql_file, "wb"), check=True)
-              elif asset.name.endswith(".sql.7z"):
-                  subprocess.run(["7z", "e", "-so", str(asset)], stdout=open(sql_file, "wb"), check=True)
-              else:
-                  sql_file.write_bytes(asset.read_bytes())
+              print(f"Decompressing {asset.name}...")
+              subprocess.run(["zstd", "-dc", str(asset)], stdout=open(sql_file, "wb"), check=True)
 
               db_file = Path("databases") / f"{name}.db"
               print(f"Converting {name} to SQLite...")
@@ -95,8 +89,8 @@ jobs:
                   env={**os.environ, "MYSQL_HOST": "127.0.0.1", "MYSQL_PORT": "3306", "MYSQL_USER": "root", "MYSQL_PASSWORD": "root"},
               )
 
-              print(f"Compressing raw SQL for {name}...")
-              subprocess.run(["gzip", "-f", str(sql_file)], check=True)
+              print(f"Compressing raw SQL for {name} with zstd...")
+              subprocess.run(["zstd", "-19", "-T0", "-f", str(sql_file)], check=True)
 
               # Clean up raw download for next iteration.
               for f in raw_dir.iterdir():
@@ -124,7 +118,7 @@ jobs:
             --repo "$RELEASE_REPO" \
             --title "$NEXT_TAG" \
             --notes "Common release with all converted databases."
-          gh release upload "$NEXT_TAG" databases/ace_world_*.db databases/*.sql.gz databases/meta.db --repo "$RELEASE_REPO" --clobber
+          gh release upload "$NEXT_TAG" databases/ace_world_*.db databases/*.sql.zst databases/meta.db --repo "$RELEASE_REPO" --clobber
 
       - name: Update latest tag
         run: |

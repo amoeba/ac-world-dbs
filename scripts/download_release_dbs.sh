@@ -21,7 +21,7 @@ if command -v gh >/dev/null 2>&1; then
 else
   API_URL="https://api.github.com/repos/$REPO/releases/tags/$TAG"
   echo "gh not found, falling back to curl from $API_URL"
-  for asset_url in $(curl -sL "$API_URL" | grep '"browser_download_url":' | grep '\.db"' | sed -E 's/.*"([^"]+)".*/\1/'); do
+  for asset_url in $(curl -sL "$API_URL" | grep '"browser_download_url":' | grep -E '\.(db|sql\.zst)"' | sed -E 's/.*"([^"]+)".*/\1/'); do
     filename=$(basename "$asset_url")
     echo "Downloading $filename..."
     curl -sL -o "$OUTDIR/$filename" "$asset_url"

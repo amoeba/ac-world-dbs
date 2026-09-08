@@ -32,8 +32,8 @@ def table_counts(conn: sqlite3.Connection) -> dict[str, int]:
     return counts
 
 
-def sqlgz_size(name: str) -> int | None:
-    path = DB_DIR / f"{name}.sql.gz"
+def sqlzst_size(name: str) -> int | None:
+    path = DB_DIR / f"{name}.sql.zst"
     if path.exists():
         return path.stat().st_size
     return None
@@ -97,7 +97,7 @@ def build_meta_db() -> Path:
         world_variant = entry.get("world_variant", "")
         world_version = entry.get("world_version", "")
         download_url = f"https://github.com/{RELEASE_REPO}/releases/download/{RELEASE_TAG}/{name}.db"
-        sql_download_url = f"https://github.com/{RELEASE_REPO}/releases/download/{RELEASE_TAG}/{name}.sql.gz"
+        sql_download_url = f"https://github.com/{RELEASE_REPO}/releases/download/{RELEASE_TAG}/{name}.sql.zst"
 
         conn = sqlite3.connect(db_path)
         counts = table_counts(conn)
@@ -106,7 +106,7 @@ def build_meta_db() -> Path:
         table_count = len(counts)
         row_count_total = sum(counts.values())
         file_size = db_path.stat().st_size
-        sql_file_size = sqlgz_size(name)
+        sql_file_size = sqlzst_size(name)
         release_date = datetime.now(timezone.utc).isoformat()
 
         cur.execute(
