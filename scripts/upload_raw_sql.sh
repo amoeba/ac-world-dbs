@@ -2,10 +2,10 @@
 #
 # upload_raw_sql.sh
 #
-# Create the next versioned GitHub release, attach a raw MySQL dump file,
-# and publish it. The CI workflow triggers on the published release, converts
-# the dump to SQLite, and adds both the compressed raw SQL and the SQLite
-# database to the same versioned release.
+# Create a GitHub release named raw-<db-name>, attach a raw MySQL dump file,
+# and publish it. After running this, add an entry to databases.toml and push;
+# CI will then convert the dump to SQLite and include it in the next versioned
+# common release.
 #
 # Usage:
 #   ./upload_raw_sql.sh <path-to-sql-file> <database-name>
@@ -49,33 +49,35 @@ case "$EXT" in
     ;;
 esac
 
-# Find the latest vN release and compute the next version.
-LATEST=$(gh release list --repo "$REPO" --limit 50 --json tagName -q '.[].tagName' | grep -E '^v[0-9]+$' | sort -V | tail -n 1 || true)
-if [ -z "$LATEST" ]; then
-  NEXT_TAG="v1"
-else
-  NEXT_NUM=$(echo "$LATEST" | sed 's/^v//')
-  NEXT_TAG="v$((NEXT_NUM + 1))"
-fi
+RELEASE_TAG="raw-$DB_NAME"
 
-echo "Creating release $NEXT_TAG on $REPO..."
-gh release create "$NEXT_TAG" \
+echo "Creating release $RELEASE_TAG on $REPO..."
+gh release create "$RELEASE_TAG" \
   --repo "$REPO" \
   --draft \
-  --title "$NEXT_TAG" \
+  --title "Raw: $DB_NAME" \
   --notes "Raw MySQL dump for $DB_NAME."
 
 echo "Uploading $FILE as $ASSET_NAME..."
 TMPDIR=$(mktemp -d)
 cp "$FILE" "$TMPDIR/$ASSET_NAME"
-gh release upload "$NEXT_TAG" "$TMPDIR/$ASSET_NAME" \
+gh release upload "$RELEASE_TAG" "$TMPDIR/$ASSET_NAME" \
   --repo "$REPO" \
   --clobber
 rm -rf "$TMPDIR"
 
-echo "Publishing release $NEXT_TAG to trigger conversion and deployment..."
-gh release edit "$NEXT_TAG" --repo "$REPO" --draft=false
+echo "Publishing release $RELEASE_TAG..."
+gh release edit "$RELEASE_TAG" --repo "$REPO" --draft=false
 
 echo ""
-echo "Release published: https://github.com/$REPO/releases/tag/$NEXT_TAG"
-echo "CI will convert the SQL to SQLite, add existing assets, and deploy."
+echo "Release published: https://github.com/$REPO/releases/tag/$RELEASE_TAG"
+echo ""
+echo "Add an entry like this to databases.toml, then commit and push:"
+echo ""
+echo "[$DB_NAME]"
+echo 'display_name = ""'
+echo 'world_name = ""'
+echo 'upstream_source = ""'
+echo 'upstream_version = ""'
+echo 'world_variant = ""'
+echo 'world_version = ""'

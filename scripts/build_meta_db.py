@@ -51,10 +51,12 @@ def build_meta_db() -> Path:
         CREATE TABLE databases (
             name TEXT PRIMARY KEY,
             display_name TEXT,
-            description TEXT,
-            version TEXT,
+            world_name TEXT,
+            upstream_source TEXT,
+            upstream_version TEXT,
+            world_variant TEXT,
+            world_version TEXT,
             release_date TEXT,
-            source_url TEXT,
             download_url TEXT,
             sql_download_url TEXT,
             file_size_bytes INTEGER,
@@ -89,9 +91,11 @@ def build_meta_db() -> Path:
         name = db_path.stem
         entry = config.get(name, {})
         display_name = entry.get("display_name", name.replace("_", " ").title())
-        description = entry.get("description", "")
-        version = entry.get("version", "")
-        source_url = entry.get("source_url", "")
+        world_name = entry.get("world_name", "")
+        upstream_source = entry.get("upstream_source", "")
+        upstream_version = entry.get("upstream_version", "")
+        world_variant = entry.get("world_variant", "")
+        world_version = entry.get("world_version", "")
         download_url = f"https://github.com/{RELEASE_REPO}/releases/download/{RELEASE_TAG}/{name}.db"
         sql_download_url = f"https://github.com/{RELEASE_REPO}/releases/download/{RELEASE_TAG}/{name}.sql.gz"
 
@@ -108,16 +112,18 @@ def build_meta_db() -> Path:
         cur.execute(
             """
             INSERT INTO databases
-            (name, display_name, description, version, release_date, source_url, download_url, sql_download_url, file_size_bytes, sql_file_size_bytes, table_count, row_count_total, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (name, display_name, world_name, upstream_source, upstream_version, world_variant, world_version, release_date, download_url, sql_download_url, file_size_bytes, sql_file_size_bytes, table_count, row_count_total, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
                 display_name,
-                description,
-                version,
+                world_name,
+                upstream_source,
+                upstream_version,
+                world_variant,
+                world_version,
                 release_date,
-                source_url,
                 download_url,
                 sql_download_url,
                 file_size,

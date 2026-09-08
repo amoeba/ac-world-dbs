@@ -1,11 +1,15 @@
 [ace_world_customdm]
-repo = "amoeba/ac-world-dbs"
-description = "ACE World CustomDM database (CE16PY v0.7.18, CustomDM v3.14)."
-version = "v0.7.18-CustomDM-v3.14"
-source_url = ""
+display_name = "Dekaru CustomDM"
+world_name = "Dekaru"
+upstream_source = "ACE"
+upstream_version = "0.7.18"
+world_variant = "CustomDM"
+world_version = "3.14"
 
 [ace_world_infiltration]
-repo = "amoeba/ac-world-dbs"
-description = "ACE World Infiltration database (CE16PY v0.7.18, Infiltration v0.13)."
-version = "v0.7.18-Infiltration-v0.13"
-source_url = ""
+display_name = "Dekaru Infiltration"
+world_name = "Dekaru"
+upstream_source = "ACE"
+upstream_version = "0.7.18"
+world_variant = "Infiltration"
+world_version = "0.13"
