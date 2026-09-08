@@ -1,0 +1,7 @@
+*.db
+*.pyc
+__pycache__/
+export/
+.direnv/
+.env
+.venv/

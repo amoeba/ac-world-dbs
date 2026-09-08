@@ -1,0 +1,9 @@
+#!/bin/sh
+#
+# post_compile
+#
+# Dokku buildpack hook: download the latest databases before the app starts.
+
+set -e
+
+sh scripts/download_release_dbs.sh ./databases

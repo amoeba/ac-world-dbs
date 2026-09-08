@@ -1,0 +1,7 @@
+[test_world_fauna]
+repo = "amoeba/ac-world-dbs"
+description = "Test fauna database with sample creatures and spawn points."
+
+[test_world_landmarks]
+repo = "amoeba/ac-world-dbs"
+description = "Test landmarks database with sample regions and points of interest."
