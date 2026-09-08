@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parent.parent
 DB_DIR = ROOT / "databases"
 META_PATH = DB_DIR / "meta.db"
 CONFIG_PATH = ROOT / "databases.toml"
+RELEASE_REPO = "amoeba/ac-world-dbs"
+RELEASE_TAG = "latest"
 
 
 def table_counts(conn: sqlite3.Connection) -> dict[str, int]:
@@ -28,6 +30,13 @@ def table_counts(conn: sqlite3.Connection) -> dict[str, int]:
         except sqlite3.Error:
             counts[table] = -1
     return counts
+
+
+def sqlgz_size(name: str) -> int | None:
+    path = DB_DIR / f"{name}.sql.gz"
+    if path.exists():
+        return path.stat().st_size
+    return None
 
 
 def build_meta_db() -> Path:
@@ -47,7 +56,9 @@ def build_meta_db() -> Path:
             release_date TEXT,
             source_url TEXT,
             download_url TEXT,
+            sql_download_url TEXT,
             file_size_bytes INTEGER,
+            sql_file_size_bytes INTEGER,
             table_count INTEGER,
             row_count_total INTEGER,
             created_at TEXT
@@ -77,11 +88,12 @@ def build_meta_db() -> Path:
 
         name = db_path.stem
         entry = config.get(name, {})
-        display_name = name.replace("_", " ").title()
+        display_name = entry.get("display_name", name.replace("_", " ").title())
         description = entry.get("description", "")
-        repo = entry.get("repo", "")
-        source_url = f"https://github.com/{repo}" if repo else ""
-        download_url = f"{source_url}/releases/download/latest/{name}.db" if repo else ""
+        version = entry.get("version", "")
+        source_url = entry.get("source_url", "")
+        download_url = f"https://github.com/{RELEASE_REPO}/releases/download/{RELEASE_TAG}/{name}.db"
+        sql_download_url = f"https://github.com/{RELEASE_REPO}/releases/download/{RELEASE_TAG}/{name}.sql.gz"
 
         conn = sqlite3.connect(db_path)
         counts = table_counts(conn)
@@ -90,23 +102,26 @@ def build_meta_db() -> Path:
         table_count = len(counts)
         row_count_total = sum(counts.values())
         file_size = db_path.stat().st_size
+        sql_file_size = sqlgz_size(name)
         release_date = datetime.now(timezone.utc).isoformat()
 
         cur.execute(
             """
             INSERT INTO databases
-            (name, display_name, description, version, release_date, source_url, download_url, file_size_bytes, table_count, row_count_total, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (name, display_name, description, version, release_date, source_url, download_url, sql_download_url, file_size_bytes, sql_file_size_bytes, table_count, row_count_total, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
                 display_name,
                 description,
-                "0.0.0-test",
+                version,
                 release_date,
                 source_url,
                 download_url,
+                sql_download_url,
                 file_size,
+                sql_file_size,
                 table_count,
                 row_count_total,
                 release_date,

@@ -1,9 +1,13 @@
-name: Build and release databases
+name: Build meta database and deploy
 
 on:
   push:
     branches:
       - main
+    paths:
+      - "databases.toml"
+      - "scripts/build_meta_db.py"
+      - ".github/workflows/build-and-release.yml"
   workflow_dispatch:
 
 jobs:
@@ -11,25 +15,26 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v6
 
       - uses: astral-sh/setup-uv@v6
 
-      - name: Create test databases
-        run: uv run scripts/create_test_dbs.py
+      - name: Download existing database assets
+        run: |
+          mkdir -p databases
+          gh release download latest \
+            --repo "$RELEASE_REPO" \
+            --pattern "*.db" \
+            --dir databases || true
 
       - name: Build meta database
         run: uv run scripts/build_meta_db.py
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: databases
-          path: ./databases/*.db
-
       - name: Update latest tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -38,16 +43,13 @@ jobs:
           git tag -a latest -m "latest"
           git push --tags
 
-      - name: Publish latest release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish latest release with meta.db
         run: |
-          # Ensure a published (non-draft) latest release exists, then upload assets.
-          if ! gh release view latest --repo ${{ github.repository }} >/dev/null 2>&1; then
-            gh release create latest --repo ${{ github.repository }} --title "latest" --notes "Latest world databases"
+          if ! gh release view latest --repo "$RELEASE_REPO" >/dev/null 2>&1; then
+            gh release create latest --repo "$RELEASE_REPO" --title "latest" --notes "Latest world databases"
           fi
-          gh release upload latest ./databases/*.db --repo ${{ github.repository }} --clobber
-          gh release edit latest --repo ${{ github.repository }} --draft=false
+          gh release upload latest ./databases/meta.db --repo "$RELEASE_REPO" --clobber
+          gh release edit latest --repo "$RELEASE_REPO" --draft=false
 
   deploy_to_dokku:
     runs-on: ubuntu-latest

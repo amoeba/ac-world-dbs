@@ -1,7 +1,11 @@
-[test_world_fauna]
+[ace_world_customdm]
 repo = "amoeba/ac-world-dbs"
-description = "Test fauna database with sample creatures and spawn points."
+description = "ACE World CustomDM database (CE16PY v0.7.18, CustomDM v3.14)."
+version = "v0.7.18-CustomDM-v3.14"
+source_url = ""
 
-[test_world_landmarks]
+[ace_world_infiltration]
 repo = "amoeba/ac-world-dbs"
-description = "Test landmarks database with sample regions and points of interest."
+description = "ACE World Infiltration database (CE16PY v0.7.18, Infiltration v0.13)."
+version = "v0.7.18-Infiltration-v0.13"
+source_url = ""

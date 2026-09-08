@@ -1,0 +1,149 @@
+name: Process raw SQL release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag of the raw release to process (e.g., raw-ace_world_customdm)"
+        required: true
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    if: startsWith(github.event.release.tag_name, 'raw-') || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine release tag
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full gzip
+          python3 -m pip install datasette
+          python3 -m pip install "db-to-sqlite @ git+https://github.com/amoeba/db-to-sqlite#egg=db-to-sqlite[mysql]"
+
+      - name: Start MySQL
+        run: |
+          docker run -d --name mysql \
+            -e MYSQL_ROOT_PASSWORD=root \
+            -e MYSQL_DATABASE=ace_world \
+            -p 3306:3306 \
+            mysql:8
+          until mysql -h 127.0.0.1 -P 3306 -u root -proot -e "SELECT 1"; do
+            echo "Waiting for MySQL..."
+            sleep 2
+          done
+
+      - name: Download raw release assets
+        run: |
+          mkdir -p raw
+          gh release download "${{ steps.vars.outputs.tag }}" \
+            --repo "$RELEASE_REPO" \
+            --dir raw
+
+      - name: Process raw SQL assets
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: 3306
+          MYSQL_USER: root
+          MYSQL_PASSWORD: root
+        run: |
+          mkdir -p databases
+          for asset in raw/*; do
+            filename=$(basename "$asset")
+            # Expected names: <db_name>.sql, <db_name>.sql.gz, or <db_name>.sql.7z
+            if [[ "$filename" =~ ^(.+)\.sql(\.gz|\.7z)?$ ]]; then
+              db_name="${BASH_REMATCH[1]}"
+              sql_file="databases/${db_name}.sql"
+
+              echo "Processing $filename -> $db_name"
+
+              if [[ "$filename" == *.sql.gz ]]; then
+                gunzip -c "$asset" > "$sql_file"
+              elif [[ "$filename" == *.sql.7z ]]; then
+                7z e -so "$asset" > "$sql_file"
+              else
+                cp "$asset" "$sql_file"
+              fi
+
+              db_file="databases/${db_name}.db"
+              sh scripts/convert_mysql_to_sqlite.sh "$sql_file" "$db_file" "$db_name"
+
+              # Compress the raw SQL for the common release.
+              gzip -f "$sql_file"
+            else
+              echo "Skipping unrecognized asset: $filename"
+            fi
+          done
+
+      - name: Update databases.toml
+        env:
+          RELEASE_REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          toml_path = Path("databases.toml")
+          existing = toml_path.read_text() if toml_path.exists() else ""
+          repo = os.environ["RELEASE_REPO"]
+
+          raw_dir = Path("raw")
+          for asset in raw_dir.iterdir():
+              filename = asset.name
+              m = re.match(r"^(.+)\.sql(?:\.gz|\.7z)?$", filename)
+              if not m:
+                  continue
+              name = m.group(1)
+              if f"[{name}]" in existing:
+                  print(f"Entry [{name}] already exists in databases.toml, skipping")
+                  continue
+              entry = (
+                  f"\n[{name}]\n"
+                  f'repo = "{repo}"\n'
+                  'description = ""\n'
+                  'version = ""\n'
+                  'source_url = ""\n'
+              )
+              with open(toml_path, "a") as f:
+                  f.write(entry)
+              print(f"Added [{name}] to databases.toml")
+          PY
+
+      - name: Commit databases.toml updates
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add databases.toml
+          if git diff --cached --quiet; then
+            echo "No databases.toml changes to commit"
+          else
+            git commit -m "Add database entries for ${{ steps.vars.outputs.tag }}"
+            git push
+          fi
+
+      - name: Upload converted assets to latest release
+        run: |
+          if ! gh release view latest --repo "$RELEASE_REPO" >/dev/null 2>&1; then
+            gh release create latest --repo "$RELEASE_REPO" --title "latest" --notes "Latest world databases"
+          fi
+          gh release upload latest databases/*.db databases/*.sql.gz --repo "$RELEASE_REPO" --clobber
+          gh release edit latest --repo "$RELEASE_REPO" --draft=false
