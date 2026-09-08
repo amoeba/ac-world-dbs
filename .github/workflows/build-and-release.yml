@@ -51,8 +51,8 @@ jobs:
         run: |
           mkdir -p databases
           python3 - <<'PY'
+          import json
           import os
-          import re
           import subprocess
           import tomllib
           from pathlib import Path
@@ -61,40 +61,100 @@ jobs:
               config = tomllib.load(f)
 
           repo = os.environ["RELEASE_REPO"]
+          databases_dir = Path("databases")
+          manifest_path = databases_dir / "manifest.json"
+
+          # Try to load a manifest from the previous common release. It maps
+          # database names to the raw asset size that produced the cached .db.
+          prev_manifest = {}
+          try:
+              subprocess.run(
+                  ["gh", "release", "download", "latest", "--repo", repo, "--pattern", "manifest.json", "--dir", "databases"],
+                  check=True,
+                  stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL,
+              )
+              prev_manifest = json.loads(manifest_path.read_text())
+              print(f"Loaded manifest from latest release: {list(prev_manifest.keys())}")
+          except subprocess.CalledProcessError:
+              print("No previous manifest found; converting all databases.")
+          except FileNotFoundError:
+              print("manifest.json not downloaded; converting all databases.")
+
+          manifest = {}
 
           for name, entry in config.items():
               raw_tag = entry.get("raw_release_tag", f"raw-{name}")
-              asset_name = f"{name}.sql"
 
-              print(f"Downloading raw SQL for {name} from {raw_tag}...")
-              subprocess.run(
-                  ["gh", "release", "download", raw_tag, "--repo", repo, "--pattern", f"{name}.sql.zst", "--dir", "raw"],
+              # Get raw asset metadata without downloading the whole file.
+              result = subprocess.run(
+                  ["gh", "release", "view", raw_tag, "--repo", repo, "--json", "assets"],
                   check=True,
+                  capture_output=True,
+                  text=True,
               )
-
-              raw_dir = Path("raw")
-              asset = raw_dir / f"{name}.sql.zst"
-              if not asset.exists():
-                  raise RuntimeError(f"No raw SQL asset found for {name}")
-
-              sql_file = Path("databases") / f"{name}.sql"
-              print(f"Decompressing {asset.name}...")
-              subprocess.run(["zstd", "-dc", str(asset)], stdout=open(sql_file, "wb"), check=True)
-
-              db_file = Path("databases") / f"{name}.db"
-              print(f"Converting {name} to SQLite...")
-              subprocess.run(
-                  ["sh", "scripts/convert_mysql_to_sqlite.sh", str(sql_file), str(db_file), name],
-                  check=True,
-                  env={**os.environ, "MYSQL_HOST": "127.0.0.1", "MYSQL_PORT": "3306", "MYSQL_USER": "root", "MYSQL_PASSWORD": "root"},
+              release_info = json.loads(result.stdout)
+              raw_asset = next(
+                  (a for a in release_info.get("assets", []) if a["name"] == f"{name}.sql.zst"),
+                  None,
               )
+              if raw_asset is None:
+                  raise RuntimeError(f"No {name}.sql.zst asset found in {raw_tag}")
 
+              raw_size = raw_asset["size"]
+              manifest[name] = {"raw_size": raw_size}
+
+              db_file = databases_dir / f"{name}.db"
+              sql_file = databases_dir / f"{name}.sql"
+              cached_size = prev_manifest.get(name, {}).get("raw_size")
+
+              if cached_size == raw_size and db_file.exists():
+                  print(f"{name}: raw asset unchanged ({raw_size} bytes), reusing cached {db_file.name}")
+              else:
+                  if cached_size == raw_size:
+                      print(f"{name}: manifest matches but {db_file.name} missing; converting.")
+                  else:
+                      print(f"{name}: raw asset changed ({cached_size} -> {raw_size}); converting.")
+
+                  print(f"Downloading raw SQL for {name} from {raw_tag}...")
+                  subprocess.run(
+                      ["gh", "release", "download", raw_tag, "--repo", repo, "--pattern", f"{name}.sql.zst", "--dir", "raw"],
+                      check=True,
+                  )
+
+                  raw_dir = Path("raw")
+                  asset = raw_dir / f"{name}.sql.zst"
+                  if not asset.exists():
+                      raise RuntimeError(f"No raw SQL asset found for {name}")
+
+                  print(f"Decompressing {asset.name}...")
+                  subprocess.run(["zstd", "-dc", str(asset)], stdout=open(sql_file, "wb"), check=True)
+
+                  print(f"Converting {name} to SQLite...")
+                  subprocess.run(
+                      ["sh", "scripts/convert_mysql_to_sqlite.sh", str(sql_file), str(db_file), name],
+                      check=True,
+                      env={**os.environ, "MYSQL_HOST": "127.0.0.1", "MYSQL_PORT": "3306", "MYSQL_USER": "root", "MYSQL_PASSWORD": "root"},
+                  )
+
+                  # Clean up raw download for next iteration.
+                  for f in raw_dir.iterdir():
+                      f.unlink()
+
+              # Always produce a fresh .sql.zst for the common release; this is
+              # fast compared to the MySQL conversion.
+              if not sql_file.exists():
+                  print(f"Decompressing cached raw SQL for {name}...")
+                  subprocess.run(
+                      ["zstd", "-dc", str(db_file.with_suffix(".sql.zst"))],
+                      stdout=open(sql_file, "wb"),
+                      check=True,
+                  )
               print(f"Compressing raw SQL for {name} with zstd...")
               subprocess.run(["zstd", "-19", "-T0", "-f", str(sql_file)], check=True)
 
-              # Clean up raw download for next iteration.
-              for f in raw_dir.iterdir():
-                  f.unlink()
+          manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
+          print(f"Wrote manifest: {manifest_path}")
           PY
 
       - name: Build meta database
@@ -118,7 +178,7 @@ jobs:
             --repo "$RELEASE_REPO" \
             --title "$NEXT_TAG" \
             --notes "Common release with all converted databases."
-          gh release upload "$NEXT_TAG" databases/ace_world_*.db databases/*.sql.zst databases/meta.db --repo "$RELEASE_REPO" --clobber
+          gh release upload "$NEXT_TAG" databases/ace_world_*.db databases/*.sql.zst databases/meta.db databases/manifest.json --repo "$RELEASE_REPO" --clobber
 
       - name: Update latest tag
         run: |
