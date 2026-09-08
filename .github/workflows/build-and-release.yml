@@ -27,7 +27,7 @@ jobs:
           name: databases
           path: ./databases/*.db
 
-      - name: Release databases
+      - name: Update latest tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -37,8 +37,17 @@ jobs:
           git push origin :refs/tags/latest || true
           git tag -a latest -m "latest"
           git push --tags
-          gh release upload latest ./databases/*.db --clobber || \
-            gh release create latest ./databases/*.db --title "latest" --notes "Latest world databases"
+
+      - name: Publish latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Ensure a published (non-draft) latest release exists, then upload assets.
+          if ! gh release view latest --repo ${{ github.repository }} >/dev/null 2>&1; then
+            gh release create latest --repo ${{ github.repository }} --title "latest" --notes "Latest world databases"
+          fi
+          gh release upload latest ./databases/*.db --repo ${{ github.repository }} --clobber
+          gh release edit latest --repo ${{ github.repository }} --draft=false
 
   deploy_to_dokku:
     runs-on: ubuntu-latest
