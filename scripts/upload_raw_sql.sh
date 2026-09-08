@@ -63,6 +63,9 @@ gh release upload "$RELEASE_TAG" "$FILE" \
   --repo "$REPO" \
   --clobber
 
+echo "Publishing release $RELEASE_TAG to trigger conversion..."
+gh release edit "$RELEASE_TAG" --repo "$REPO" --draft=false
+
 echo ""
-echo "Draft release created: https://github.com/$REPO/releases/tag/$RELEASE_TAG"
-echo "Publish it to trigger conversion and deployment."
+echo "Release published: https://github.com/$REPO/releases/tag/$RELEASE_TAG"
+echo "CI will convert the SQL to SQLite and deploy."
