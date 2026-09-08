@@ -66,9 +66,12 @@ gh release create "$NEXT_TAG" \
   --notes "Raw MySQL dump for $DB_NAME."
 
 echo "Uploading $FILE as $ASSET_NAME..."
-gh release upload "$NEXT_TAG" "$FILE" \
+TMPDIR=$(mktemp -d)
+cp "$FILE" "$TMPDIR/$ASSET_NAME"
+gh release upload "$NEXT_TAG" "$TMPDIR/$ASSET_NAME" \
   --repo "$REPO" \
   --clobber
+rm -rf "$TMPDIR"
 
 echo "Publishing release $NEXT_TAG to trigger conversion and deployment..."
 gh release edit "$NEXT_TAG" --repo "$REPO" --draft=false
