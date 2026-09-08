@@ -14,10 +14,19 @@ OUTDIR="${1:-./databases}"
 mkdir -p "$OUTDIR"
 
 echo "Downloading databases from $REPO release $TAG..."
-gh release download "$TAG" --repo "$REPO" --pattern "*.db" --dir "$OUTDIR" || {
-  echo "Failed to download release databases. If running locally, ensure gh is authenticated."
-  exit 1
-}
+
+# Prefer gh when available (local dev), otherwise fall back to curl/wget.
+if command -v gh >/dev/null 2>&1; then
+  gh release download "$TAG" --repo "$REPO" --pattern "*.db" --dir "$OUTDIR"
+else
+  API_URL="https://api.github.com/repos/$REPO/releases/tags/$TAG"
+  echo "gh not found, falling back to curl from $API_URL"
+  for asset_url in $(curl -sL "$API_URL" | grep '"browser_download_url":' | grep '\.db"' | sed -E 's/.*"([^"]+)".*/\1/'); do
+    filename=$(basename "$asset_url")
+    echo "Downloading $filename..."
+    curl -sL -o "$OUTDIR/$filename" "$asset_url"
+  done
+fi
 
 echo "Downloaded databases to $OUTDIR:"
 ls -la "$OUTDIR"
