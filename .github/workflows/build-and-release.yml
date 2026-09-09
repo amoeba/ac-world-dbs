@@ -203,16 +203,30 @@ jobs:
             --repo "$RELEASE_REPO" \
             --title "$NEXT_TAG" \
             --notes "Common release with all converted databases."
-          # Upload files one at a time with retries; GitHub's upload endpoint
-          # can transiently reject parallel large uploads with HTTP 400.
+          # Upload via the REST API with curl. `gh release upload` can fail
+          # with HTTP 400 "Bad Content-Length" on large assets from runners
+          # (HTTP/2 body-length issue); curl over HTTP/1.1 with an explicit
+          # Content-Length is reliable.
+          RELEASE_ID=$(gh api "repos/$RELEASE_REPO/releases/tags/$NEXT_TAG" --jq '.id')
           fail=0
           for f in databases/*.db databases/*.sql.zst databases/manifest.json; do
             ok=0
-            for attempt in 1 2 3; do
-              if gh release upload "$NEXT_TAG" "$f" --repo "$RELEASE_REPO" --clobber; then
+            for attempt in 1 2 3 4 5; do
+              if curl -sS -L --fail --http1.1 -X POST \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary "@$f" \
+                "https://uploads.github.com/repos/$RELEASE_REPO/releases/$RELEASE_ID/assets?name=$(basename "$f")" \
+                >/dev/null; then
                 echo "Uploaded $f"
                 ok=1
                 break
+              fi
+              # A partial asset may linger after a failed attempt; drop it.
+              asset_id=$(gh api "repos/$RELEASE_REPO/releases/tags/$NEXT_TAG" \
+                --jq ".assets[] | select(.name == \"$(basename "$f")\") | .id" 2>/dev/null | head -n 1)
+              if [ -n "$asset_id" ]; then
+                gh api -X DELETE "repos/$RELEASE_REPO/releases/assets/$asset_id" >/dev/null 2>&1 || true
               fi
               echo "Upload of $f failed (attempt $attempt); retrying in 5s..."
               sleep 5
