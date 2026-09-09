@@ -1,4 +1,4 @@
 datasette
 datasette-block-robots
 mysqlclient
-db-to-sqlite @ git+https://github.com/amoeba/db-to-sqlite#egg=db-to-sqlite[mysql]
+db-to-sqlite[mysql] @ git+https://github.com/amoeba/db-to-sqlite
