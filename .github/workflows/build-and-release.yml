@@ -206,6 +206,16 @@ jobs:
             --repo "$RELEASE_REPO" \
             --title "$NEXT_TAG" \
             --notes "Common release with all converted databases."
+          echo "DB files before upload:"
+          ls -la databases/*.db databases/*.sql.zst databases/manifest.json
+          for f in databases/*.db; do
+            sz=$(stat -c%s "$f" 2>/dev/null || echo 0)
+            if [ "$sz" -lt 100 ]; then
+              echo "FAIL: $f is $sz bytes (too small)" >&2
+              exit 1
+            fi
+          done
+
           # Upload via the REST API with curl. `gh release upload` can fail
           # with "HTTP 400: Bad Content-Length" on large assets from runners,
           # and uploads.github.com is intermittently degraded, so we retry
