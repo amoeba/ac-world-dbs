@@ -155,7 +155,7 @@ jobs:
 
                   print(f"Converting {name} to SQLite...")
                   subprocess.run(
-                      ["sh", "scripts/convert_mysql_to_sqlite.sh", str(sql_file), str(db_file), name],
+                      ["sh", "scripts/convert_mysql_to_sqlite.sh", str(sql_file), str(db_file), "ace_world"],
                       check=True,
                       env={**os.environ, "MYSQL_HOST": "127.0.0.1", "MYSQL_PORT": "3306", "MYSQL_USER": "root", "MYSQL_PASSWORD": "root"},
                   )
