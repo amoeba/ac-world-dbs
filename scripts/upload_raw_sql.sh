@@ -38,6 +38,8 @@ if ! command -v zstd >/dev/null 2>&1; then
   exit 1
 fi
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
 TMPDIR=$(mktemp -d)
 SQL_FILE="$TMPDIR/$DB_NAME.sql"
 ZST_FILE="$TMPDIR/$DB_NAME.sql.zst"
@@ -89,10 +91,4 @@ echo "Release published: https://github.com/$REPO/releases/tag/$RELEASE_TAG"
 echo ""
 echo "Add an entry like this to meta.toml, then commit and push:"
 echo ""
-echo "[$DB_NAME]"
-echo 'display_name = ""'
-echo 'world_name = ""'
-echo 'upstream_source = ""'
-echo 'upstream_version = ""'
-echo 'world_variant = ""'
-echo 'world_version = ""'
+sed -e "s/\$DB_NAME/$DB_NAME/g" "$ROOT/scripts/meta_entry.template.toml"

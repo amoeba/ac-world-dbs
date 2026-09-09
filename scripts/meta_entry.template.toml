@@ -1,0 +1,7 @@
+[$DB_NAME]
+display_name = ""
+server = ""
+patch = ""
+patch_version = ""
+upstream_source = "ACE"
+upstream_version = ""
