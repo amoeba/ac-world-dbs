@@ -19,10 +19,14 @@ set -e
 
 SQL_FILE="$1"
 DB_FILE="$2"
-DB_NAME="${3:-}"
+# MySQL dumps (e.g. from SQLyog) usually declare their own database via
+# "USE `dbname`;" / "CREATE DATABASE ... `dbname`". Honor that name so the
+# tables land in the database db-to-sqlite reads from; otherwise fall back
+# to the caller-provided name (or "ace_world"). The workflow passes
+# "ace_world" as a harmless fallback.
+DB_NAME=$(sed -n 's/^USE `\([^`]*\)`.*/\1/p' "$SQL_FILE" 2>/dev/null | head -n1)
 if [ -z "$DB_NAME" ]; then
-  DB_NAME=$(grep -oP "USE \`\K[^\`]+" "$SQL_FILE" 2>/dev/null | head -n1)
-  DB_NAME="${DB_NAME:-ace_world}"
+  DB_NAME="${3:-ace_world}"
 fi
 
 if [ -z "$SQL_FILE" ] || [ -z "$DB_FILE" ]; then
@@ -59,5 +63,13 @@ mysql $MYSQL_OPTS --database="$DB_NAME" < "$SQL_FILE"
 
 echo "Exporting to SQLite $DB_FILE..."
 db-to-sqlite --all "$MYSQL_URL" "$DB_FILE"
+
+# Fail loudly if nothing was exported (db-to-sqlite exits 0 even when it
+# finds no tables, e.g. when the dump's USE statement pointed elsewhere).
+DB_SIZE=$(wc -c < "$DB_FILE" 2>/dev/null || echo 0)
+if [ "$DB_SIZE" -lt 100 ]; then
+  echo "ERROR: $DB_FILE is only $DB_SIZE bytes; nothing was exported" >&2
+  exit 1
+fi
 
 echo "Done: $DB_FILE"
