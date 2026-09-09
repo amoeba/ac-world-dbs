@@ -32,7 +32,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y p7zip-full zstd
           uv venv .venv
-          uv pip install datasette
+          uv pip install datasette mysqlclient
           uv pip install "db-to-sqlite @ git+https://github.com/amoeba/db-to-sqlite#egg=db-to-sqlite[mysql]"
 
       - name: Start MySQL
