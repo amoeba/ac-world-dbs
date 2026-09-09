@@ -203,7 +203,26 @@ jobs:
             --repo "$RELEASE_REPO" \
             --title "$NEXT_TAG" \
             --notes "Common release with all converted databases."
-          gh release upload "$NEXT_TAG" databases/*.db databases/*.sql.zst databases/manifest.json --repo "$RELEASE_REPO" --clobber
+          # Upload files one at a time with retries; GitHub's upload endpoint
+          # can transiently reject parallel large uploads with HTTP 400.
+          fail=0
+          for f in databases/*.db databases/*.sql.zst databases/manifest.json; do
+            ok=0
+            for attempt in 1 2 3; do
+              if gh release upload "$NEXT_TAG" "$f" --repo "$RELEASE_REPO" --clobber; then
+                echo "Uploaded $f"
+                ok=1
+                break
+              fi
+              echo "Upload of $f failed (attempt $attempt); retrying in 5s..."
+              sleep 5
+            done
+            if [ "$ok" -ne 1 ]; then
+              echo "FAILED to upload $f after retries" >&2
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] || exit 1
 
   deploy_to_dokku:
     runs-on: ubuntu-latest
