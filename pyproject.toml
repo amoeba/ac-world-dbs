@@ -1,0 +1,9 @@
+[project]
+name = "ac-world-dbs"
+version = "0.0.0"
+description = "Asheron's Call world database conversion and meta build"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv]
+package = true

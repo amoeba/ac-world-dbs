@@ -48,7 +48,6 @@ jobs:
           MYSQL_PORT: 3306
           MYSQL_USER: root
           MYSQL_PASSWORD: root
-          PYTHONPATH: ./scripts
         run: |
           mkdir -p databases
           uv run python - <<'PY'
@@ -60,7 +59,7 @@ jobs:
           import tomllib
           from pathlib import Path
 
-          from build_meta_db import db_name_from_config
+          from scripts.build_meta_db import db_name_from_config
 
           with open("meta.toml", "rb") as f:
               config = tomllib.load(f)
