@@ -176,9 +176,30 @@ def build_meta_db() -> Path:
     return META_PATH
 
 
+def validate_sync(meta_path: Path, config_path: Path) -> None:
+    import tomllib
+    with open(config_path, "rb") as f:
+        config = tomllib.load(f)
+    import sqlite3
+    conn = sqlite3.connect(str(meta_path))
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='databases'")
+    if cur.fetchone() is None:
+        raise RuntimeError("meta.db missing 'databases' table")
+    cur.execute("SELECT database FROM databases")
+    dbs = {row[0] for row in cur.fetchall()}
+    for section, entry in config.items():
+        expected = db_name_from_config(entry)
+        if expected not in dbs:
+            raise RuntimeError(f"meta.db missing {expected} (from meta.toml [{section}])")
+    print("meta.db sync validated against meta.toml")
+    conn.close()
+
+
 def main() -> None:
     path = build_meta_db()
     print(f"Created {path}")
+    validate_sync(path, CONFIG_PATH)
 
 
 if __name__ == "__main__":
