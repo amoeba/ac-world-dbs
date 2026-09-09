@@ -11,11 +11,11 @@
 #   ./upload_raw_sql.sh <path-to-sql-file> <database-name>
 #
 #   <database-name> should be the published database name: {server} or
-#   {server}-{patch}, lowercased (e.g. dekaru or dekaru-customdm).
+#   {server}-{patch}, lowercased (e.g. <server> or <server>-<patch>).
 #
 # Examples:
-#   ./upload_raw_sql.sh ~/Downloads/ACE-World-CE16PY-db-v0.7.18-CustomDM-v3.14.sql.7z dekaru-customdm
-#   ./upload_raw_sql.sh ~/Downloads/dump.sql dekaru-infiltration
+#   ./upload_raw_sql.sh ~/Downloads/ACE-World-CE16PY-db-v0.7.18-CustomDM-v3.14.sql.7z <database-name>
+#   ./upload_raw_sql.sh ~/Downloads/dump.sql <database-name>
 
 set -e
 

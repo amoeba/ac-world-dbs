@@ -19,7 +19,7 @@ A Datasette instance hosting world databases for Asheron's Call, plus a meta dat
 2. Upload it as a `raw-<database-name>` release, where `database-name` is `{server}` or `{server}-{patch}` (lowercased):
 
    ```sh
-   ./scripts/upload_raw_sql.sh ~/Downloads/ACE-World-....sql.7z dekaru-customdm
+   ./scripts/upload_raw_sql.sh ~/Downloads/ACE-World-....sql.7z <database-name>
    ```
 
 3. Add a section to `meta.toml` with `server` and `patch` fields (plus optional `patch_version`, `display_name`, `upstream_source`, `upstream_version`), then commit and push to `main`. (Or use `./scripts/upload_raw_sql.sh`; it reads `scripts/meta_entry.template.toml` so the emitted keys stay in sync with `meta.toml`.) CI derives the database name from `server`/`patch`, converts the dump to SQLite, publishes it in the next versioned release, and redeploys.
