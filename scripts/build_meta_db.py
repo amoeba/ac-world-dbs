@@ -186,7 +186,7 @@ def validate_sync(meta_path: Path, config_path: Path) -> None:
     cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='databases'")
     if cur.fetchone() is None:
         raise RuntimeError("meta.db missing 'databases' table")
-    cur.execute("SELECT database FROM databases")
+    cur.execute("SELECT name FROM databases")
     dbs = {row[0] for row in cur.fetchall()}
     for section, entry in config.items():
         expected = db_name_from_config(entry)
