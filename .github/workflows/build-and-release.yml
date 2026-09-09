@@ -206,9 +206,47 @@ jobs:
             --repo "$RELEASE_REPO" \
             --title "$NEXT_TAG" \
             --notes "Common release with all converted databases."
-          gh release upload "$NEXT_TAG" \
-            --repo "$RELEASE_REPO" \
-            databases/*.db databases/*.sql.zst databases/manifest.json
+          # Upload via the REST API with curl. `gh release upload` can fail
+          # with "HTTP 400: Bad Content-Length" on large assets from runners,
+          # and uploads.github.com is intermittently degraded, so we retry
+          # with escalating backoff and print the response body on failure.
+          # Chunked transfer encoding is NOT used (it is rejected with 400).
+          RELEASE_ID=$(gh api "repos/$RELEASE_REPO/releases/tags/$NEXT_TAG" --jq '.id')
+          fail=0
+          for f in databases/*.db databases/*.sql.zst databases/manifest.json; do
+            ok=0
+            for attempt in 1 2 3 4 5 6 7 8; do
+              if out=$(curl -sS --fail-with-body -w "HTTP_CODE=%{http_code}" -X POST \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Content-Type: application/octet-stream" \
+                --data-binary "@$f" \
+                "https://uploads.github.com/repos/$RELEASE_REPO/releases/$RELEASE_ID/assets?name=$(basename "$f")" 2>&1); then
+                echo "Uploaded $f"
+                ok=1
+                break
+              fi
+              echo "Upload of $f failed on attempt $attempt:"
+              echo "$out" | head -c 1500
+              echo
+              # A partial asset may linger after a failed attempt; drop it.
+              asset_id=$(gh api "repos/$RELEASE_REPO/releases/tags/$NEXT_TAG" \
+                --jq ".assets[] | select(.name == \"$(basename "$f")\") | .id" 2>/dev/null | head -n 1)
+              if [ -n "$asset_id" ]; then
+                gh api -X DELETE "repos/$RELEASE_REPO/releases/assets/$asset_id" >/dev/null 2>&1 || true
+              fi
+              case "$attempt" in
+                1|2|3) sleep 5 ;;
+                4) sleep 60 ;;
+                5) sleep 120 ;;
+                *) sleep 300 ;;
+              esac
+            done
+            if [ "$ok" -ne 1 ]; then
+              echo "FAILED to upload $f after retries" >&2
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] || exit 1
 
   deploy_to_dokku:
     runs-on: ubuntu-latest
