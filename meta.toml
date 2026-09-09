@@ -1,15 +1,23 @@
-[ace_world_customdm]
-display_name = "Dekaru CustomDM"
-world_name = "Dekaru"
-upstream_source = "ACE"
-upstream_version = "0.7.18"
-world_variant = "CustomDM"
-world_version = "3.14"
+# World database configuration.
+#
+# Each section is keyed by the published database name. The `server` and
+# `patch` fields are the source of truth for naming: the published database
+# is named `{server}` or, when a patch is present, `{server}-{patch}` (both
+# lowercased). CI derives the database name from these fields, so they must
+# match the section key.
 
-[ace_world_infiltration]
-display_name = "Dekaru Infiltration"
-world_name = "Dekaru"
+[dekaru-customdm]
+server = "Dekaru"
+patch = "CustomDM"
+patch_version = "3.14"
+display_name = "Dekaru CustomDM"
 upstream_source = "ACE"
 upstream_version = "0.7.18"
-world_variant = "Infiltration"
-world_version = "0.13"
+
+[dekaru-infiltration]
+server = "Dekaru"
+patch = "Infiltration"
+patch_version = "0.13"
+display_name = "Dekaru Infiltration"
+upstream_source = "ACE"
+upstream_version = "0.7.18"

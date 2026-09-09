@@ -3,8 +3,14 @@
 # dependencies = []
 # ///
 
-"""Build the meta database from the world databases on disk."""
+"""Build the meta database from the world databases on disk.
 
+Database names are derived from the `server` and `patch` fields in
+meta.toml: `{server}` or `{server}-{patch}`, both lowercased.
+"""
+
+import os
+import re
 import sqlite3
 import tomllib
 from datetime import datetime, timezone
@@ -15,7 +21,31 @@ DB_DIR = ROOT / "databases"
 META_PATH = DB_DIR / "meta.db"
 CONFIG_PATH = ROOT / "meta.toml"
 RELEASE_REPO = "amoeba/ac-world-dbs"
-RELEASE_TAG = "latest"
+# CI sets this to the concrete versioned release tag (e.g. "v4") so that the
+# download URLs in meta.db point at a real release. Falls back to the special
+# "latest" token for local dev.
+RELEASE_TAG = os.environ.get("RELEASE_TAG", "latest")
+
+
+def slugify(value: str) -> str:
+    """Lowercase a name for use as a database filename component."""
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+
+
+def db_name_from_config(entry: dict) -> str:
+    """Derive the published database name from server/patch fields."""
+    server = slugify(entry.get("server", ""))
+    patch = slugify(entry.get("patch", ""))
+    if not server:
+        raise ValueError(f"config entry is missing a 'server' field: {entry}")
+    if patch:
+        return f"{server}-{patch}"
+    return server
+
+
+def db_display_name(entry: dict) -> str:
+    parts = [p for p in (entry.get("server"), entry.get("patch")) if p]
+    return entry.get("display_name") or " ".join(parts)
 
 
 def table_counts(conn: sqlite3.Connection) -> dict[str, int]:
@@ -50,12 +80,12 @@ def build_meta_db() -> Path:
         """
         CREATE TABLE databases (
             name TEXT PRIMARY KEY,
+            server TEXT,
+            patch TEXT,
+            patch_version TEXT,
             display_name TEXT,
-            world_name TEXT,
             upstream_source TEXT,
             upstream_version TEXT,
-            world_variant TEXT,
-            world_version TEXT,
             release_date TEXT,
             download_url TEXT,
             sql_download_url TEXT,
@@ -84,20 +114,21 @@ def build_meta_db() -> Path:
         with open(CONFIG_PATH, "rb") as f:
             config = tomllib.load(f)
 
-    for db_path in sorted(DB_DIR.glob("*.db")):
-        if db_path.name == "meta.db":
-            continue
-
-        name = db_path.stem
-        entry = config.get(name, {})
-        display_name = entry.get("display_name", name.replace("_", " ").title())
-        world_name = entry.get("world_name", "")
+    for section, entry in config.items():
+        name = db_name_from_config(entry)
+        server = entry.get("server", "")
+        patch = entry.get("patch", "")
+        display_name = db_display_name(entry)
         upstream_source = entry.get("upstream_source", "")
         upstream_version = entry.get("upstream_version", "")
-        world_variant = entry.get("world_variant", "")
-        world_version = entry.get("world_version", "")
+        patch_version = entry.get("patch_version", "")
         download_url = f"https://github.com/{RELEASE_REPO}/releases/download/{RELEASE_TAG}/{name}.db"
         sql_download_url = f"https://github.com/{RELEASE_REPO}/releases/download/{RELEASE_TAG}/{name}.sql.zst"
+
+        db_path = DB_DIR / f"{name}.db"
+        if not db_path.exists():
+            print(f"WARNING: {db_path} not found; skipping {section}")
+            continue
 
         conn = sqlite3.connect(db_path)
         counts = table_counts(conn)
@@ -112,17 +143,17 @@ def build_meta_db() -> Path:
         cur.execute(
             """
             INSERT INTO databases
-            (name, display_name, world_name, upstream_source, upstream_version, world_variant, world_version, release_date, download_url, sql_download_url, file_size_bytes, sql_file_size_bytes, table_count, row_count_total, created_at)
+            (name, server, patch, patch_version, display_name, upstream_source, upstream_version, release_date, download_url, sql_download_url, file_size_bytes, sql_file_size_bytes, table_count, row_count_total, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
+                server,
+                patch,
+                patch_version,
                 display_name,
-                world_name,
                 upstream_source,
                 upstream_version,
-                world_variant,
-                world_version,
                 release_date,
                 download_url,
                 sql_download_url,

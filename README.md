@@ -4,13 +4,24 @@ A Datasette instance hosting world databases for Asheron's Call, plus a meta dat
 
 ## Structure
 
-- `databases/` — SQLite databases served by Datasette.
+- `databases/` — SQLite databases served by Datasette (populated from GitHub releases; not committed).
   - `meta.db` — Metadata about each world database.
-  - `test_world_fauna.db` — Sample fauna and spawn data.
-  - `test_world_landmarks.db` — Sample landmarks and regions.
-- `meta.toml` — Configuration describing each world database.
-- `scripts/` — Scripts to create test data, build the meta database, and download release assets.
+  - `dekaru-customdm.db` — Dekaru (CustomDM patch) world database.
+  - `dekaru-infiltration.db` — Dekaru (Infiltration patch) world database.
+- `meta.toml` — Configuration describing each world database. Each section is keyed by the published database name and has `server` and `patch` fields; the name is derived as `{server}` or `{server}-{patch}` (lowercased).
+- `scripts/` — Scripts to upload raw MySQL dumps, convert them to SQLite, build the meta database, and download release assets.
 - `bin/post_compile` — Dokku hook to fetch databases from the latest GitHub release before startup.
+
+## Adding a new world database
+
+1. Obtain the raw MySQL dump (`.sql`, `.sql.gz`, `.sql.zst`, or `.sql.7z`) for the world.
+2. Upload it as a `raw-<database-name>` release, where `database-name` is `{server}` or `{server}-{patch}` (lowercased):
+
+   ```sh
+   ./scripts/upload_raw_sql.sh ~/Downloads/ACE-World-....sql.7z dekaru-customdm
+   ```
+
+3. Add a section to `meta.toml` with `server` and `patch` fields (plus optional `patch_version`, `display_name`, `upstream_source`, `upstream_version`), then commit and push to `main`. CI derives the database name from `server`/`patch`, converts the dump to SQLite, publishes it in the next versioned release, and redeploys.
 
 ## Running locally
 
@@ -18,8 +29,8 @@ A Datasette instance hosting world databases for Asheron's Call, plus a meta dat
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python scripts/create_test_dbs.py
-python scripts/build_meta_db.py
+sh scripts/download_release_dbs.sh ./databases
+uv run scripts/build_meta_db.py
 datasette .
 ```
 
@@ -27,8 +38,9 @@ datasette .
 
 Pushes to `main` trigger a GitHub Actions workflow that:
 
-1. Builds the test databases and meta database.
-2. Publishes them as assets on the `latest` GitHub release.
-3. Deploys the Datasette app to Dokku.
+1. Converts all databases configured in `meta.toml` from their `raw-<name>` releases to SQLite.
+2. Builds the meta database.
+3. Publishes the databases as assets on a new auto-incremented versioned release (`v1`, `v2`, ...).
+4. Deploys the Datasette app to Dokku.
 
-Dokku downloads the latest databases via `bin/post_compile` before starting the app.
+Dokku downloads the newest versioned release's databases via `bin/post_compile` before starting the app. The script resolves "latest" to the newest release tagged `v[0-9]+` through the GitHub API — there is no release literally tagged `latest`, and raw dump releases (`raw-*`) are excluded.

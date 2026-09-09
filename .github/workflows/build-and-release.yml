@@ -53,9 +53,14 @@ jobs:
           python3 - <<'PY'
           import json
           import os
+          import re
           import subprocess
+          import sys
           import tomllib
           from pathlib import Path
+
+          sys.path.insert(0, str(Path.cwd() / "scripts"))
+          from build_meta_db import db_name_from_config
 
           with open("meta.toml", "rb") as f:
               config = tomllib.load(f)
@@ -64,27 +69,45 @@ jobs:
           databases_dir = Path("databases")
           manifest_path = databases_dir / "manifest.json"
 
-          # Try to load a manifest from the previous common release. It maps
-          # database names to the raw asset size that produced the cached .db.
+          # Resolve the newest versioned common release (v1, v2, ...). Raw
+          # dump releases (raw-*) are excluded so they never hijack this.
+          result = subprocess.run(
+              ["gh", "release", "list", "--repo", repo, "--limit", "100", "--json", "tagName"],
+              check=True,
+              capture_output=True,
+              text=True,
+          )
+          tags = [r["tagName"] for r in json.loads(result.stdout)]
+          versioned = sorted(
+              (t for t in tags if re.match(r"^v[0-9]+$", t)),
+              key=lambda t: int(t[1:]),
+          )
+          prev_tag = versioned[-1] if versioned else ""
           prev_manifest = {}
-          try:
-              subprocess.run(
-                  ["gh", "release", "download", "latest", "--repo", repo, "--pattern", "manifest.json", "--dir", "databases"],
-                  check=True,
-                  stdout=subprocess.DEVNULL,
-                  stderr=subprocess.DEVNULL,
-              )
-              prev_manifest = json.loads(manifest_path.read_text())
-              print(f"Loaded manifest from latest release: {list(prev_manifest.keys())}")
-          except subprocess.CalledProcessError:
-              print("No previous manifest found; converting all databases.")
-          except FileNotFoundError:
-              print("manifest.json not downloaded; converting all databases.")
+          if prev_tag:
+              print(f"Latest release: {prev_tag}")
+              try:
+                  subprocess.run(
+                      ["gh", "release", "download", prev_tag, "--repo", repo, "--pattern", "manifest.json", "--dir", "databases"],
+                      check=True,
+                      stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL,
+                  )
+                  prev_manifest = json.loads(manifest_path.read_text())
+                  print(f"Loaded manifest from {prev_tag}: {list(prev_manifest.keys())}")
+              except subprocess.CalledProcessError:
+                  print("No previous manifest found; converting all databases.")
+              except FileNotFoundError:
+                  print("manifest.json not downloaded; converting all databases.")
+          else:
+              print("Could not resolve latest release; converting all databases.")
 
           manifest = {}
 
-          for name, entry in config.items():
-              raw_tag = entry.get("raw_release_tag", f"raw-{name}")
+          for section, entry in config.items():
+              name = db_name_from_config(entry)
+              raw_tag = entry.get("raw_release_tag", f"raw-{section}")
+              raw_asset_name = f"{section}.sql.zst"
 
               # Get raw asset metadata without downloading the whole file.
               result = subprocess.run(
@@ -95,11 +118,11 @@ jobs:
               )
               release_info = json.loads(result.stdout)
               raw_asset = next(
-                  (a for a in release_info.get("assets", []) if a["name"] == f"{name}.sql.zst"),
+                  (a for a in release_info.get("assets", []) if a["name"] == raw_asset_name),
                   None,
               )
               if raw_asset is None:
-                  raise RuntimeError(f"No {name}.sql.zst asset found in {raw_tag}")
+                  raise RuntimeError(f"No {raw_asset_name} asset found in {raw_tag}")
 
               raw_size = raw_asset["size"]
               manifest[name] = {"raw_size": raw_size}
@@ -118,12 +141,12 @@ jobs:
 
                   print(f"Downloading raw SQL for {name} from {raw_tag}...")
                   subprocess.run(
-                      ["gh", "release", "download", raw_tag, "--repo", repo, "--pattern", f"{name}.sql.zst", "--dir", "raw"],
+                      ["gh", "release", "download", raw_tag, "--repo", repo, "--pattern", raw_asset_name, "--dir", "raw"],
                       check=True,
                   )
 
                   raw_dir = Path("raw")
-                  asset = raw_dir / f"{name}.sql.zst"
+                  asset = raw_dir / raw_asset_name
                   if not asset.exists():
                       raise RuntimeError(f"No raw SQL asset found for {name}")
 
@@ -157,9 +180,6 @@ jobs:
           print(f"Wrote manifest: {manifest_path}")
           PY
 
-      - name: Build meta database
-        run: uv run scripts/build_meta_db.py
-
       - name: Determine next versioned release
         id: version
         run: |
@@ -171,6 +191,11 @@ jobs:
             echo "tag=v$((NUM + 1))" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Build meta database
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: uv run scripts/build_meta_db.py
+
       - name: Create versioned release with all assets
         run: |
           NEXT_TAG="${{ steps.version.outputs.tag }}"
@@ -178,16 +203,7 @@ jobs:
             --repo "$RELEASE_REPO" \
             --title "$NEXT_TAG" \
             --notes "Common release with all converted databases."
-          gh release upload "$NEXT_TAG" databases/ace_world_*.db databases/*.sql.zst databases/meta.db databases/manifest.json --repo "$RELEASE_REPO" --clobber
-
-      - name: Update latest tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -d latest || true
-          git push origin :refs/tags/latest || true
-          git tag -a latest -m "latest"
-          git push origin latest --force
+          gh release upload "$NEXT_TAG" databases/*.db databases/*.sql.zst databases/manifest.json --repo "$RELEASE_REPO" --clobber
 
   deploy_to_dokku:
     runs-on: ubuntu-latest
