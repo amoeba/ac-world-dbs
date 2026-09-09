@@ -19,7 +19,11 @@ set -e
 
 SQL_FILE="$1"
 DB_FILE="$2"
-DB_NAME="${3:-ace_world}"
+DB_NAME="${3:-}"
+if [ -z "$DB_NAME" ]; then
+  DB_NAME=$(grep -oP "USE \`\K[^\`]+" "$SQL_FILE" 2>/dev/null | head -n1)
+  DB_NAME="${DB_NAME:-ace_world}"
+fi
 
 if [ -z "$SQL_FILE" ] || [ -z "$DB_FILE" ]; then
   echo "Usage: $0 <input.sql> <output.db> [mysql_database_name]"
