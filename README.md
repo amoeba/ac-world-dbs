@@ -9,6 +9,7 @@ A Datasette instance hosting world databases for Asheron's Call, plus a meta dat
   - `dekaru-customdm.db` — Dekaru (CustomDM patch) world database.
   - `dekaru-infiltration.db` — Dekaru (Infiltration patch) world database.
 - `meta.toml` — Configuration describing each world database. Each section is keyed by the published database name and has `server` and `patch` fields; the name is derived as `{server}` or `{server}-{patch}` (lowercased).
+- `db-to-sqlite` is installed from `amoeba/db-to-sqlite` (fork of `simonw/db-to-sqlite`) because the fork applies a `byteorder="big"` fix in `cli.py` (`int.from_bytes`) required for correct MySQL conversion.
 - `scripts/` — Scripts to upload raw MySQL dumps, convert them to SQLite, build the meta database, and download release assets.
 - `bin/post_compile` — Dokku hook to fetch databases from the latest GitHub release before startup.
 
