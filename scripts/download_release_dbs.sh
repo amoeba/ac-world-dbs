@@ -25,11 +25,9 @@ echo "Downloading databases from $REPO release $TAG..."
 # hijack the deploy.
 if [ "$TAG" = "latest" ]; then
   echo "Resolving newest common release for $REPO..."
-  TAG=$(curl -sL "https://api.github.com/repos/$REPO/releases?per_page=100" \
-    | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' \
-    | grep -E '^v[0-9]+$' \
-    | sort -V \
-    | tail -n 1)
+  TAG=$(gh api "repos/$REPO/releases?per_page=100" \
+    --jq '.[] | select(.tagName | test("^v[0-9]+$")) | .tagName' \
+    | sort -V | tail -n 1)
   if [ -z "$TAG" ]; then
     echo "Could not resolve newest common release; aborting." >&2
     exit 1
@@ -42,13 +40,19 @@ echo "Using release tag: $TAG"
 if command -v gh >/dev/null 2>&1; then
   gh release download "$TAG" --repo "$REPO" --pattern "*.db" --pattern "*.sql.zst" --dir "$OUTDIR"
 else
-  API_URL="https://api.github.com/repos/$REPO/releases/tags/$TAG"
-  echo "gh not found, falling back to curl from $API_URL"
-  for asset_url in $(curl -sL "$API_URL" | grep '"browser_download_url":' | grep -E '\.(db|sql\.zst)"' | sed -E 's/.*"([^"]+)".*/\1/'); do
-    filename=$(basename "$asset_url")
-    echo "Downloading $filename..."
-    curl -sL -o "$OUTDIR/$filename" "$asset_url"
-  done
+  echo "gh not found; falling back to python json parser"
+  python3 -c '
+import json, urllib.request, sys, os, basename
+url = "https://api.github.com/repos/'"$REPO"'/releases/tags/'"$TAG"'"
+with urllib.request.urlopen(url) as r:
+    data = json.load(r)
+for a in data.get("assets", []):
+    n = a.get("name", "")
+    if n.endswith(".db") or n.endswith(".sql.zst"):
+        out = os.path.join("'"$OUTDIR"'", n)
+        print("Downloading " + n + "...")
+        urllib.request.urlretrieve(a["browser_download_url"], out)
+'
 fi
 
 echo "Downloaded databases to $OUTDIR:"
