@@ -31,8 +31,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y p7zip-full zstd
-          uv venv .venv
-          uv pip install -r requirements.txt
+          uv sync
 
       - name: Start MySQL
         run: |

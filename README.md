@@ -28,9 +28,7 @@ A Datasette instance hosting world databases for Asheron's Call, plus a meta dat
 ## Running locally
 
 ```sh
-uv venv .venv
-source .venv/bin/activate
-uv pip install -r requirements.txt
+uv sync
 sh scripts/download_release_dbs.sh ./databases
 uv run scripts/build_meta_db.py
 datasette .
